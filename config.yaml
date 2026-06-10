@@ -1,0 +1,48 @@
+# Ameghino bounding box (xmin, ymin, xmax, ymax) — WGS84
+bbox:
+  xmin: -63.0
+  ymin: -35.2
+  xmax: -62.0
+  ymax: -34.4
+  crs: "EPSG:4326"
+
+# Sentinel-1 SAR time range
+sar:
+  start_date: "2014-01-01"
+  end_date: "2024-12-31"
+  polarization: "VV"
+  orbit_pass: "DESCENDING"
+
+# CHIRPS rain threshold for "intense event" (mm in 24h)
+chirps:
+  event_threshold_mm: 40
+  accumulation_windows_days: [7, 15, 30]
+
+# DEM
+dem:
+  source: "GLO-30"          # Copernicus GLO-30 via Planetary Computer
+  resolution_m: 30
+  crs: "EPSG:32720"         # UTM zone 20S for metric calculations
+
+# Pysheds flow direction
+terrain:
+  flow_direction_method: "dinf"   # d8 or dinf
+  smooth_dem: true
+  smooth_sigma: 1.0               # gaussian sigma in pixels
+
+# ML model
+model:
+  n_spatial_blocks: 5             # for spatial block CV
+  xgboost_params:
+    n_estimators: 300
+    max_depth: 6
+    learning_rate: 0.05
+    subsample: 0.8
+    colsample_bytree: 0.8
+    eval_metric: "auc"
+
+# Paths (relative to repo root)
+paths:
+  raw_data: "data/raw"
+  processed_data: "data/processed"
+  outputs: "outputs"

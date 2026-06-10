@@ -1,0 +1,30 @@
+name: farm-flood
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - gdal
+  - rasterio
+  - geopandas
+  - pysheds
+  - xarray
+  - numpy
+  - pandas
+  - matplotlib
+  - jupyter
+  - ipykernel
+  - pyyaml
+  - tqdm
+  - pip
+  - pip:
+    - earthengine-api
+    - geemap
+    - xgboost
+    - scikit-learn
+    - folium
+    - osmnx
+    - pystac-client
+    - planetary-computer
+    - requests
+    - shapely
