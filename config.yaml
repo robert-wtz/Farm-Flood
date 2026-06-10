@@ -1,3 +1,7 @@
+# Google Earth Engine
+gee:
+  project: "farm-flood"
+
 # Ameghino bounding box (xmin, ymin, xmax, ymax) — WGS84
 bbox:
   xmin: -63.0

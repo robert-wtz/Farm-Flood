@@ -8,13 +8,16 @@ import pandas as pd
 from pathlib import Path
 
 
-def init_gee():
+def init_gee(project=None):
+    if project is None:
+        from .config import load_config
+        project = load_config().get("gee", {}).get("project")
     try:
-        ee.Initialize()
+        ee.Initialize(project=project)
     except Exception:
         ee.Authenticate()
-        ee.Initialize()
-    print("GEE initialized.")
+        ee.Initialize(project=project)
+    print(f"GEE initialized (project: {project}).")
 
 
 def get_chirps_events(bbox_ee, start="2014-01-01", end="2024-12-31", threshold_mm=40):
