@@ -13,14 +13,10 @@ from pathlib import Path
 
 def spatial_block_cv(df, n_blocks=5, lat_col="y", lon_col="x"):
     """
-    Assign each pixel to a spatial block based on grid position.
+    Assign each pixel to one of n_blocks spatial blocks using lat strips.
     Returns array of block labels (0..n_blocks-1).
     """
-    lat_bins = pd.cut(df[lat_col], bins=n_blocks, labels=False)
-    lon_bins = pd.cut(df[lon_col], bins=n_blocks, labels=False)
-    # Combine into block id
-    blocks = lat_bins * n_blocks + lon_bins
-    return blocks
+    return pd.cut(df[lat_col], bins=n_blocks, labels=False)
 
 
 def train_model(df, feature_cols, target_col="flooded", n_blocks=5,
@@ -36,9 +32,9 @@ def train_model(df, feature_cols, target_col="flooded", n_blocks=5,
         "subsample": 0.8,
         "colsample_bytree": 0.8,
         "eval_metric": "auc",
-        "use_label_encoder": False,
         "random_state": 42,
     }
+    xgb_params = {k: v for k, v in xgb_params.items() if k != "use_label_encoder"}
 
     X = df[feature_cols].values
     y = df[target_col].values
@@ -93,16 +89,43 @@ def predict_raster(model, feature_raster_paths, output_path, feature_cols, ref_r
     import rasterio
     import numpy as np
 
+    from rasterio.enums import Resampling
+    from rasterio.warp import reproject
+
+    def _resample(src_path, ref_path):
+        with rasterio.open(ref_path) as ref:
+            shape = (ref.height, ref.width)
+            ref_transform = ref.transform
+            ref_crs = ref.crs
+        with rasterio.open(src_path) as src:
+            if src.shape == shape and src.crs == ref_crs:
+                arr = src.read(1).astype(float)
+                if src.nodata is not None:
+                    arr[arr == src.nodata] = np.nan
+                return arr
+            out = np.empty(shape, dtype=float)
+            reproject(
+                source=rasterio.band(src, 1),
+                destination=out,
+                src_transform=src.transform,
+                src_crs=src.crs,
+                dst_transform=ref_transform,
+                dst_crs=ref_crs,
+                resampling=Resampling.bilinear,
+            )
+            return out
+
     with rasterio.open(ref_raster_path) as src:
         meta = src.meta.copy()
         shape = (src.height, src.width)
 
     arrays = []
     for col in feature_cols:
+        if col in ("x", "y"):
+            continue
         path = feature_raster_paths[col]
-        with rasterio.open(path) as src:
-            arr = src.read(1).astype(float).ravel()
-            arrays.append(arr)
+        arr = _resample(path, ref_raster_path).ravel()
+        arrays.append(arr)
 
     X = np.column_stack(arrays)
     valid = ~np.any(np.isnan(X), axis=1)

@@ -76,7 +76,11 @@ def identify_retention_sites(sinks_path, twi_path, min_area_pixels=20,
                         "mean_twi": float(mean_twi),
                     })
 
-    gdf = gpd.GeoDataFrame(sites, crs=crs)
+    if not sites:
+        print(f"No retention sites found (twi_threshold={twi_threshold}, min_area={min_area_pixels}px). Try lowering thresholds.")
+        return gpd.GeoDataFrame(columns=["geometry", "area_ha", "mean_twi"], crs=crs)
+
+    gdf = gpd.GeoDataFrame(sites, geometry="geometry", crs=crs)
     if output_path:
         gdf.to_file(output_path)
         print(f"Retention sites saved: {output_path} ({len(gdf)} sites)")

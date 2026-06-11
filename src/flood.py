@@ -30,11 +30,30 @@ def flood_mask_from_event(bbox_ee, event_date, pre_days=20, post_days=10,
         __import__("pandas").Timedelta(days=6)
     ).strftime("%Y-%m-%d")
 
-    pre = get_s1_image(bbox_ee, pre_end, window_days=6, polarization=polarization)
-    post = get_s1_image(bbox_ee, event_date, window_days=6, polarization=polarization)
+    import pandas as pd
 
-    pre_filtered = speckle_filter(pre)
-    post_filtered = speckle_filter(post)
+    def _get_col(date_str):
+        start = (pd.Timestamp(date_str) - pd.Timedelta(days=6)).strftime("%Y-%m-%d")
+        end = (pd.Timestamp(date_str) + pd.Timedelta(days=6)).strftime("%Y-%m-%d")
+        return (
+            ee.ImageCollection("COPERNICUS/S1_GRD")
+            .filterBounds(bbox_ee)
+            .filterDate(start, end)
+            .filter(ee.Filter.eq("instrumentMode", "IW"))
+            .filter(ee.Filter.listContains("transmitterReceiverPolarisation", polarization))
+            .filter(ee.Filter.eq("orbitProperties_pass", "DESCENDING"))
+            .select(polarization)
+        )
+
+    pre_col = _get_col(pre_end)
+    post_col = _get_col(event_date)
+
+    # Skip events with no S1 imagery in either window
+    if pre_col.size().getInfo() == 0 or post_col.size().getInfo() == 0:
+        return None
+
+    pre_filtered = speckle_filter(pre_col.median())
+    post_filtered = speckle_filter(post_col.median())
 
     diff = post_filtered.subtract(pre_filtered)
     flooded = diff.lt(threshold_db).rename("flooded")
@@ -47,13 +66,17 @@ def build_flood_inventory(bbox_ee, event_dates, output_dir=None, polarization="V
     Returns ImageCollection with one binary mask per event.
     """
     masks = []
+    skipped = 0
     for date in event_dates:
         mask = flood_mask_from_event(bbox_ee, date, polarization=polarization)
+        if mask is None:
+            skipped += 1
+            continue
         mask = mask.set("event_date", date)
         masks.append(mask)
 
     inventory = ee.ImageCollection(masks)
-    print(f"Flood inventory built: {len(event_dates)} events")
+    print(f"Flood inventory built: {len(masks)} events ({skipped} skipped — no S1 imagery)")
 
     if output_dir:
         # Export stack sum (flood frequency raster) to Drive for local use
@@ -71,3 +94,23 @@ def compute_flood_frequency(inventory):
     count = inventory.count()
     freq = inventory.sum().divide(count).rename("flood_freq_fraction")
     return freq
+
+
+def combine_jrc_sar_frequency(jrc_images, sar_inventory, bbox_ee):
+    """
+    Combine JRC long-term water history (1984–present) with recent SAR flood masks.
+
+    JRC occurrence (0–100 scale) is normalized to 0–1 and weighted 60%.
+    SAR flood frequency (0–1) is weighted 40% — adds recent events and cloud-free detection.
+    Returns a single combined flood frequency image (0–1).
+    """
+    jrc_norm = jrc_images["occurrence"].divide(100).rename("jrc_freq")
+    sar_freq = compute_flood_frequency(sar_inventory).rename("sar_freq")
+
+    combined = (
+        jrc_norm.multiply(0.6)
+        .add(sar_freq.multiply(0.4))
+        .rename("flood_freq_combined")
+        .clip(bbox_ee)
+    )
+    return combined

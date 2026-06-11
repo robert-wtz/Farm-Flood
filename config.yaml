@@ -10,12 +10,18 @@ bbox:
   ymax: -34.4
   crs: "EPSG:4326"
 
+# JRC Global Surface Water (Pekel et al.) — historia larga 1984–presente
+jrc:
+  dataset: "JRC/GSW1_4/GlobalSurfaceWater"
+  weight: 0.6          # peso en frecuencia combinada JRC+SAR
+
 # Sentinel-1 SAR time range
 sar:
   start_date: "2014-01-01"
   end_date: "2024-12-31"
   polarization: "VV"
   orbit_pass: "DESCENDING"
+  weight: 0.4          # peso en frecuencia combinada JRC+SAR
 
 # CHIRPS rain threshold for "intense event" (mm in 24h)
 chirps:
@@ -38,7 +44,7 @@ terrain:
 model:
   n_spatial_blocks: 5             # for spatial block CV
   xgboost_params:
-    n_estimators: 300
+    n_estimators: 100
     max_depth: 6
     learning_rate: 0.05
     subsample: 0.8

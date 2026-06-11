@@ -100,6 +100,22 @@ def get_ndvi_median(bbox_ee, start="2019-01-01", end="2023-12-31"):
     return s2.select("NDVI").median()
 
 
+def get_jrc_water(bbox_ee):
+    """
+    JRC Global Surface Water (Pekel et al.) — water occurrence 1984–present.
+    Returns three GEE Images clipped to bbox:
+      - occurrence:   % of time covered by water (0–100)
+      - seasonality:  months/year with water (0–12)
+      - recurrence:   % of years with water (0–100)
+    """
+    jrc = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").clip(bbox_ee)
+    return {
+        "occurrence":  jrc.select("occurrence"),
+        "seasonality": jrc.select("seasonality"),
+        "recurrence":  jrc.select("recurrence"),
+    }
+
+
 def export_to_drive(image, description, bbox_ee, scale=30, folder="FarmFlood"):
     """Export GEE image to Google Drive."""
     task = ee.batch.Export.image.toDrive(

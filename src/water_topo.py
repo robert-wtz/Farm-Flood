@@ -108,13 +108,31 @@ def compare_dem_vs_water_topo(dem_path, rel_elev_path, output_path=None):
     """
     from scipy.stats import spearmanr
 
+    from rasterio.enums import Resampling
+    from rasterio.warp import reproject
+
     with rasterio.open(dem_path) as src:
         dem = src.read(1).astype(float)
         meta = src.meta.copy()
         nodata = src.nodata
+        dem_transform = src.transform
+        dem_crs = src.crs
 
+    # Resample rel_elev to match DEM grid if shapes differ
     with rasterio.open(rel_elev_path) as src:
-        rel_elev = src.read(1).astype(float)
+        if src.shape != dem.shape or src.crs != dem_crs:
+            rel_elev = np.empty(dem.shape, dtype=float)
+            reproject(
+                source=rasterio.band(src, 1),
+                destination=rel_elev,
+                src_transform=src.transform,
+                src_crs=src.crs,
+                dst_transform=dem_transform,
+                dst_crs=dem_crs,
+                resampling=Resampling.bilinear,
+            )
+        else:
+            rel_elev = src.read(1).astype(float)
 
     # Mask nans/nodata
     valid = ~np.isnan(dem) & ~np.isnan(rel_elev)

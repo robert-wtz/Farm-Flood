@@ -19,27 +19,61 @@ def load_raster_as_array(path):
         return arr, src.transform, src.crs, src.meta
 
 
-def build_pixel_features(raster_paths: dict, flood_target_path, valid_mask=None):
+def _resample_to_ref(src_path, ref_path):
+    """Read raster resampled to match ref_path grid."""
+    from rasterio.enums import Resampling
+    from rasterio.warp import reproject
+    with rasterio.open(ref_path) as ref:
+        ref_meta = ref.meta.copy()
+        shape = (ref.height, ref.width)
+        ref_transform = ref.transform
+        ref_crs = ref.crs
+    with rasterio.open(src_path) as src:
+        if src.shape == shape and src.crs == ref_crs:
+            arr = src.read(1).astype(float)
+            if src.nodata is not None:
+                arr[arr == src.nodata] = np.nan
+            return arr
+        out = np.empty(shape, dtype=float)
+        reproject(
+            source=rasterio.band(src, 1),
+            destination=out,
+            src_transform=src.transform,
+            src_crs=src.crs,
+            dst_transform=ref_transform,
+            dst_crs=ref_crs,
+            resampling=Resampling.bilinear,
+        )
+        if src.nodata is not None:
+            out[out == src.nodata] = np.nan
+        return out
+
+
+def build_pixel_features(raster_paths: dict, flood_target_path, valid_mask=None, max_pixels=500_000, seed=42):
     """
     Stack all feature rasters into a pixel-wise DataFrame.
 
     raster_paths: dict {feature_name: path}
     flood_target_path: binary flood frequency or event mask for target
-    Returns: pd.DataFrame with columns = feature names + 'flooded' target
+    Returns: pd.DataFrame with columns = feature names + x/y coords + 'flooded' target
     """
-    arrays = {}
-    ref_meta = None
+    ref_path = next(iter(raster_paths.values()))
+
+    # Extract pixel center coordinates from reference raster
+    with rasterio.open(ref_path) as ref:
+        from rasterio.transform import xy
+        rows, cols = np.meshgrid(np.arange(ref.height), np.arange(ref.width), indexing='ij')
+        xs, ys = xy(ref.transform, rows.ravel(), cols.ravel())
+
+    arrays = {"x": np.array(xs), "y": np.array(ys)}
 
     for name, path in raster_paths.items():
-        arr, transform, crs, meta = load_raster_as_array(path)
+        arr = _resample_to_ref(path, ref_path)
         arrays[name] = arr.ravel()
-        if ref_meta is None:
-            ref_meta = meta
-            shape = arr.shape
 
-    # Target
-    target, _, _, _ = load_raster_as_array(flood_target_path)
-    arrays["flooded"] = (target.ravel() > 0.5).astype(int)
+    # Target — threshold at 0.1 (10% flood frequency = frequently at risk)
+    target = _resample_to_ref(flood_target_path, ref_path)
+    arrays["flooded"] = (target.ravel() > 0.1).astype(int)
 
     df = pd.DataFrame(arrays)
 
@@ -47,6 +81,8 @@ def build_pixel_features(raster_paths: dict, flood_target_path, valid_mask=None)
         df = df[valid_mask.ravel()]
 
     df = df.dropna()
+    if max_pixels and len(df) > max_pixels:
+        df = df.sample(n=max_pixels, random_state=seed)
     return df
 
 

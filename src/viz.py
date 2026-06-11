@@ -11,13 +11,20 @@ import folium
 from pathlib import Path
 
 
-def plot_raster(path, title="", cmap="viridis", figsize=(10, 8), output_path=None):
+def plot_raster(path, title="", cmap="viridis", figsize=(10, 8), output_path=None, log_scale=False):
     with rasterio.open(path) as src:
         data = src.read(1).astype(float)
-        data[data == src.nodata] = np.nan
+        if src.nodata is not None:
+            data[data == src.nodata] = np.nan
         fig, ax = plt.subplots(figsize=figsize)
-        show(src, ax=ax, cmap=cmap, title=title)
-        plt.colorbar(ax.images[0], ax=ax, shrink=0.7)
+        if log_scale:
+            data = np.where(data > 0, np.log1p(data), np.nan)
+            title = f"{title} (log scale)"
+        import matplotlib.colors as mc
+        norm = mc.Normalize(vmin=np.nanmin(data), vmax=np.nanmax(data))
+        im = ax.imshow(data, cmap=cmap, norm=norm)
+        ax.set_title(title)
+        plt.colorbar(im, ax=ax, shrink=0.7)
         if output_path:
             plt.savefig(output_path, dpi=150, bbox_inches="tight")
         plt.show()
